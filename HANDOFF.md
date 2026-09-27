@@ -144,3 +144,130 @@ lower-fidelity but fully testable by you (no human eyes needed) via
   human in Studio — mesh imports, visual tuning), and a short prioritized list
   of what a human should check first when they sit down at Studio in the
   morning.
+
+## Session 2 update: terrain, village, townsfolk (commit `2a9c419`)
+
+Built out points 1-3 of "Tonight's goal" above. Point 4 (GLB pipeline) was
+checked and skipped — see below.
+
+**GLB/mesh pipeline**: checked for `blender`/`bpy` (not installed, no package
+manager access to add them within this session's time budget) — none
+available. Went straight to the Part-based fallback this doc already
+describes; every new visual (terrain, houses, trees, NPC rig) is procedural
+Parts/Terrain voxels. If a later session gets Blender/bpy access, the
+highest-value thing to convert first is probably the tree canopy (currently
+overlapping spheres, cheap to mesh into something less blobby) — houses and
+the NPC rig are more structural and lower priority to reshape.
+
+**New files**:
+- `src/shared/WorldHeightMap.luau` — pure function `GetGroundY(x, z)`, the
+  single source of truth for ground height (flat village clearing, easing
+  into hills toward the forest ring). Both `TerrainService` (paints voxels)
+  and `VillageService` (places buildings/trees/NPCs) call this so nothing
+  floats or clips relative to the actual terrain.
+- `src/server/Services/TerrainService.luau` (`Init` only) — paints
+  `Workspace.Terrain` via `FillRegion` on an 8-stud grid.
+- `src/server/Services/VillageService.luau` (`Init` only) — 9 houses in a
+  ring around center (doors facing in), a well at dead center, ~140 trees
+  scattered in an annulus outside the clearing (density-biased toward the
+  outer edge), and one townsfolk NPC spawned per house doorway, tagged
+  `"Townsfolk"`.
+- `src/server/Services/NPCWanderService.luau` (`Start` only) — polls for
+  `"Townsfolk"`-tagged models (same discovery pattern as
+  `EnemyMovementService`) and gives each one a wander coroutine: idle or
+  `Humanoid:MoveTo` a random point near its spawn, no aggro/combat logic at
+  all. Deliberately a separate tag and service from `Enemy`/`EnemyMover` —
+  do not fold townsfolk into `EnemyService`'s clone-and-tag path; they were
+  kept simpler on purpose (see the architecture note in this doc about
+  decorative NPCs not needing Humanoid health machinery — though they *do*
+  use a Humanoid here, for free `MoveTo` walking/turning, just no
+  health/respawn logic).
+- `src/server/WorldGen/` — geometry builders, called only from
+  `VillageService`, not auto-loaded by the Services loader:
+  - `PartUtil.luau` — shared `NewPart`/`NewWedge` helpers (anchoring/material
+    defaults).
+  - `HouseBuilder.luau` — four walls + door gap + pitched wedge roof +
+    chimney.
+  - `TreeBuilder.luau` — tapered trunk + a small cluster of foliage spheres.
+  - `TownsfolkFactory.luau` — a hand-built R6-shape rig (Parts + Motor6D
+    joints, real body-part names so `Humanoid`/`RigType.R6` behave
+    normally), plus a name-tag `BillboardGui`.
+
+**`Constants.luau`**: added `Constants.World` (village/forest radii, ground
+level, max hill height) and `Constants.NPC` (walk speed, wander radius/
+interval, idle chance) groups, following the existing grouped-by-system
+convention. Did not touch `Constants.Enemy`/`Constants.Combat`/
+`Constants.Remotes`.
+
+**`default.project.json`**: removed the old flat gray `Baseplate` part (the
+new terrain is the ground now) and added `VoidFloor` — a large (2048x2048),
+invisible, anchored safety-net `Part` far below everything (Y=-100). The
+generated terrain only covers a ~220-stud radius circle, smaller than the
+old 512x512 square `Baseplate`, so without a floor under the corners/outside
+the forest ring a wandering player could fall into the void; `VoidFloor`
+catches that. `HelloClaude` was left untouched.
+
+**Load-order note**: `TerrainService`, `VillageService`, and
+`EnemyService`/`WeaponService` all only implement `Init()` (no `Start()`
+dependency), so the loader's two-phase "all `Init()` before any `Start()`"
+guarantee means terrain exists before anything's `Start()` runs (e.g. before
+`EnemyService.Start()` spawns an unanchored, physics-simulated mover that
+needs solid ground under it). `VillageService` doesn't actually *need*
+`TerrainService` to have run first, either — it computes ground height
+itself from the same pure `WorldHeightMap` function rather than depending on
+`TerrainService`'s side effects, so there's no real ordering dependency
+between the two despite both running in the `Init` phase. `NPCWanderService`
+only has `Start()`, and (like `EnemyMovementService`) discovers its targets
+by polling a `CollectionService` tag every second rather than assuming
+`VillageService` ran first — so there's no hard ordering requirement there
+either.
+
+### What's unverified (needs a human in Studio)
+
+No Studio access this session either — everything below is reasoned from
+first principles / matched to known-working patterns in this codebase, not
+visually confirmed:
+
+1. **`HouseBuilder`'s pitched roof** (`RoofLeft`/`RoofRight` wedges) — the
+   `CFrame.Angles` chain to orient the two wedges into a symmetric peaked
+   roof is the single riskiest piece of math in this session's work (wedge
+   orientation from a cold start, no way to preview it). If houses look
+   wrong in Studio, start here; worst case, swap the roof for two plain
+   tilted `Part`s (easier to reason about than `WedgePart` local axes) or a
+   single low-poly pitched-roof shape if a mesh pipeline becomes available.
+2. **`TownsfolkFactory`'s idle/walk animation ids** (`180435571`/
+   `180426354`) — well-known public default R6 animation ids, referenced by
+   asset id only (no download needed), but never actually seen playing.
+   If townsfolk stand T-posed instead of idling/walking, check these first;
+   the rig/joint math underneath should still make them walk via
+   `Humanoid:MoveTo` even with no animation (just without limb motion).
+3. **Visual density/scale generally** — house ring radius, tree count/
+   density falloff, wander radius, are first-guess constants (now in
+   `Constants.World`/`Constants.NPC`), not tuned against anything. Cheap to
+   retune once someone can actually look at it.
+4. **Terrain material thresholds** (`Rock` above ~55% of `MaxHillHeight`,
+   `Grass` below) — reasonable-sounding but arbitrary; adjust in
+   `TerrainService.luau` if hills look wrong (too much rock too low, etc).
+
+### Morning checklist (priority order)
+
+1. Open Studio, let the Rojo plugin sync, and just look at the village —
+   confirm terrain/houses/trees/NPCs exist at all and nothing is
+   catastrophically wrong (a NaN CFrame, a part the size of the map, etc).
+2. Check the roof geometry on a couple of houses (item 1 above) — likely the
+   thing most in need of a fix.
+3. Watch a townsfolk NPC for ~30s — does it walk smoothly to a wander point
+   and either idle or turn to walk again, or does it T-pose / stutter /
+   clip into its own house?
+4. Walk from the village out toward the forest edge and past it — confirm
+   the terrain height easing feels right and `VoidFloor` actually catches a
+   deliberate fall off the far edge.
+5. If it's all reasonable: tune `Constants.World`/`Constants.NPC` to taste
+   (house ring radius, tree density, wander radius) rather than touching the
+   generation code itself.
+6. Longer-term: nothing in this session touched combat/enemies/weapons;
+   `EnemyService`'s R6-rig-template search (`findRigTemplate`) only looks at
+   direct `Workspace` children, so it will not pick up anything under the
+   new `Village`/`Forest`/`Townsfolk` folders — no interaction expected
+   there, but worth confirming once a human can see both systems running
+   together.
