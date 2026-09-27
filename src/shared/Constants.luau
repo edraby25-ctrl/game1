@@ -38,6 +38,22 @@ Constants.Enemy = {
 	RepathInterval = 0.1,
 }
 
+Constants.World = {
+	VillageRadius = 90,
+	ForestRingInner = 100,
+	ForestRingOuter = 220,
+	GroundLevel = 0,
+	MaxHillHeight = 28,
+}
+
+Constants.NPC = {
+	WalkSpeed = 8,
+	WanderRadius = 22,
+	WanderIntervalMin = 3,
+	WanderIntervalMax = 8,
+	IdleChance = 0.35,
+}
+
 Constants.Remotes = {
 	PlayerDataChanged = "PlayerDataChanged",
 	RequestAttack = "RequestAttack",

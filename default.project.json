@@ -70,14 +70,16 @@
       }
     },
     "Workspace": {
-      "Baseplate": {
+      "VoidFloor": {
         "$className": "Part",
         "$properties": {
           "Anchored": true,
-          "BottomSurface": "Smooth",
+          "CanCollide": true,
+          "Locked": true,
+          "Transparency": 1.0,
           "CFrame": [
             0.0,
-            -10.0,
+            -100.0,
             0.0,
             1.0,
             0.0,
@@ -89,26 +91,16 @@
             0.0,
             1.0
           ],
-          "Color": {
-            "Color3uint8": [
-              98,
-              94,
-              98
-            ]
-          },
-          "FormFactor": "Symmetric",
-          "Locked": true,
           "Position": [
             0.0,
-            -10.0,
+            -100.0,
             0.0
           ],
           "Size": [
-            512.0,
+            2048.0,
             20.0,
-            512.0
-          ],
-          "TopSurface": "Smooth"
+            2048.0
+          ]
         }
       },
       "HelloClaude": {
